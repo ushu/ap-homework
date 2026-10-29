@@ -1,0 +1,331 @@
+# B1 — Motus : le jeu des mots, en pipelines
+
+## Vous avez trouvé le niveau caché
+
+`XYZZY` est le mot magique de *Colossal Cave Adventure*, le premier jeu
+d'aventure textuel, sorti en 1976. Il ne fait rien d'utile dans le jeu ;
+ici, il vous ouvre une porte.
+
+Derrière, le Motus, le jeu télévisé dont *Wordle* est un cousin : un mot
+secret de cinq lettres, une proposition, et le jeu répond lettre par lettre.
+Comptez environ 1 h. Tout s'écrit avec les motifs, les listes, `Enum` et le
+pipe du carnet `ap1-04-enum-pipe`, sans récursion explicite.
+
+## Notre question
+
+Chaque lettre de la proposition reçoit l'un de trois verdicts : `:bien`, la
+bonne lettre à la bonne place ; `:mal_place`, une lettre du secret, mais
+ailleurs ; `:absent`, une lettre qui n'y est pas.
+
+![Le secret PLAGE et la proposition GLACE alignés lettre à lettre : L, A et E sont bien placés (carrés rouges), G est dans le secret mais ailleurs (rond jaune), C est absent (case vide)](https://ap-2026.noce.fr/diagrams/bonus-b1/verdicts.svg)
+
+Facile ? Prédisez les verdicts de `RARES` contre le secret `PARIS`. La
+proposition a deux `R`, le secret un seul : que mérite le premier `R` ? Ce
+piège, que ratent bien des versions trouvées en ligne, est le cœur de
+l'exercice 4.
+
+Évaluez une fois l'import des vérifications `assert` : une condition fausse
+arrête la cellule et affiche les deux valeurs comparées. Chaque exercice
+définit son module, et les suivants s'en servent : après toute modification,
+réévaluez la cellule, puis ses vérifications.
+
+```elixir
+import ExUnit.Assertions
+```
+
+## 1. Un mot devient une liste de lettres
+
+**Contrat.** `Mots.lettres/1` rend la liste des lettres d'un mot, en
+majuscules, pour que `"table"` et `"TABLE"` se valent :
+`Mots.lettres("table")` vaut `["T", "A", "B", "L", "E"]`. C'est un pipeline à
+deux étapes, [`String.upcase/1`](https://hexdocs.pm/elixir/String.html#upcase/1)
+puis [`String.graphemes/1`](https://hexdocs.pm/elixir/String.html#graphemes/1).
+
+```elixir
+defmodule Mots do
+  def lettres(mot) do
+    # Un pipeline : majuscules, puis découpage.
+    nil
+  end
+end
+```
+
+```elixir
+assert Mots.lettres("table") == ["T", "A", "B", "L", "E"]
+assert Mots.lettres("TABLE") == Mots.lettres("table")
+# Ajoutez un cas limite : que doit rendre le mot vide ?
+```
+
+## 2. Comparer position par position
+
+**Contrat.** `Places.places(secret, proposition)` rend un atome par
+position : `:bien` si la lettre proposée est celle du secret, `:autre`
+sinon. Distinguer « mal placée » d'« absente » attendra l'exercice 4.
+
+> 💡 [`Enum.zip/2`](https://hexdocs.pm/elixir/Enum.html#zip/2) agrafe deux
+> listes en une liste de paires. Une fonction anonyme peut avoir plusieurs
+> clauses, comme un `case`, et une variable écrite deux fois dans un motif
+> exige deux valeurs égales. Prédisez ce que rend la cellule suivante.
+
+```elixir
+Enum.zip(["R", "A"], ["P", "A"])
+|> Enum.map(fn
+  {x, x} -> :pareil
+  {_x, _y} -> :different
+end)
+```
+
+```elixir
+defmodule Places do
+  def places(secret, proposition) do
+    # Agrafez les lettres des deux mots, puis changez chaque paire en atome.
+    nil
+  end
+end
+```
+
+```elixir
+assert Places.places("PARIS", "RARES") == [:autre, :bien, :bien, :autre, :bien]
+assert Places.places("table", "SUCRE") == [:autre, :autre, :autre, :autre, :bien]
+# Ajoutez le cas analogue d'un mot comparé à lui-même.
+```
+
+## 3. Ce qu'il reste du secret
+
+Revenons à `RARES` contre `PARIS`. Le `R` du milieu est bien placé : il
+prend le seul `R` du secret, et il n'en reste plus pour le `R` de tête, qui
+reçoit donc `:absent`. Une bonne place se sert la première.
+
+![Les lettres du secret PARIS appariées par un :bien, A, R et S, quittent le stock ; il reste P et I, si bien que le R en tête de RARES ne trouve plus de R libre et reçoit :absent](https://ap-2026.noce.fr/diagrams/bonus-b1/inventaire.svg)
+
+La question n'est donc pas « la lettre est-elle dans le secret ? », mais
+« en reste-t-il ? ».
+
+**Contrat.** `Restantes.restantes(secret, proposition)` fait l'*inventaire*
+du secret : une map qui associe à chaque lettre restée libre, c-à-d. non
+appariée par un `:bien`, son nombre d'exemplaires.
+`Restantes.restantes("PARIS", "RARES")` vaut `%{"I" => 1, "P" => 1}`.
+
+> 💡 [`Enum.frequencies/1`](https://hexdocs.pm/elixir/Enum.html#frequencies/1)
+> compte les éléments d'une liste : `Enum.frequencies(["L", "A", "L"])` vaut
+> `%{"A" => 1, "L" => 2}`. Un motif extrait une moitié de paire :
+> `fn {lettre, _place} -> lettre end`.
+
+Le pipeline a quatre étapes : agrafer les lettres du secret avec les places,
+garder les `:autre`, ne garder que la lettre, compter. Pourquoi les lettres
+du secret, et non celles de la proposition ?
+
+```elixir
+defmodule Restantes do
+  def restantes(secret, proposition) do
+    # zip, filter, map, frequencies.
+    nil
+  end
+end
+```
+
+```elixir
+assert Restantes.restantes("PARIS", "RARES") == %{"I" => 1, "P" => 1}
+assert Restantes.restantes("SALLE", "PARIS") == %{"S" => 1, "L" => 2, "E" => 1}
+# Ajoutez un cas limite : que reste-t-il quand la proposition est le secret ?
+```
+
+## 4. La comparaison complète
+
+**Contrat.** `Motus.comparer(secret, proposition)` rend un verdict par lettre
+de la proposition. On parcourt les positions de gauche à droite : un `:bien`
+reste `:bien` ; une position `:autre` devient `:mal_place` s'il reste de sa
+lettre dans l'inventaire, qui en perd alors un exemplaire, et `:absent`
+sinon.
+
+L'inventaire change donc en cours de route : ce que prend une position
+manque aux suivantes. Or `Enum.map/2` traite chaque élément seul ; il faut
+un parcours qui fasse circuler un accumulateur, comme `Enum.reduce/3`, et
+qui rende pourtant une liste.
+
+> 💡 [`Enum.map_reduce/3`](https://hexdocs.pm/elixir/Enum.html#map_reduce/3)
+> fait les deux : sa fonction reçoit l'élément et l'accumulateur, et rend
+> `{image, nouvel_accumulateur}` ; l'appel rend `{images, accumulateur_final}`.
+> `Map.get(map, cle, 0)` lit une clé, `0` si elle manque, et
+> `Map.update!(map, cle, fn n -> n - 1 end)` décrémente une clé présente.
+> Prédisez ce que rend la cellule suivante.
+
+```elixir
+Enum.map_reduce([3, 5, 2], 0, fn x, total -> {x + total, x + total} end)
+```
+
+Prédisez aussi, sur papier, `Motus.comparer("PLAGE", "SALLE")` : le `E` final
+est bien placé, et la proposition a deux `L` pour un seul dans le secret.
+
+```elixir
+defmodule Motus do
+  def comparer(secret, proposition) do
+    # Agrafez les lettres de la proposition avec leurs places, puis un
+    # Enum.map_reduce parti de l'inventaire ; ne gardez que les verdicts.
+    nil
+  end
+end
+```
+
+```elixir
+assert Motus.comparer("PARIS", "RARES") == [:absent, :bien, :bien, :absent, :bien]
+assert Motus.comparer("PLAGE", "SALLE") == [:absent, :mal_place, :mal_place, :absent, :bien]
+assert Motus.comparer("PLAGE", "GLACE") == [:mal_place, :bien, :bien, :absent, :bien]
+# Une anagramme n'a aucune lettre absente.
+assert :absent not in Motus.comparer("SERRE", "ERRES")
+# Ajoutez un cas limite, par ex. une proposition faite de cinq fois la même lettre.
+```
+
+Une dernière vérification, plus sévère, s'écrit elle-même en pipeline : pour
+chaque lettre, le jeu n'annonce jamais plus d'exemplaires présents, `:bien`
+ou `:mal_place`, que le secret n'en contient.
+
+```elixir
+for {secret, proposition} <- [{"PLAGE", "SALLE"}, {"POMME", "MOMIE"}, {"VERRE", "REVER"}, {"PARIS", "RARES"}] do
+  stock = Enum.frequencies(Mots.lettres(secret))
+
+  annoncees =
+    Enum.zip(Mots.lettres(proposition), Motus.comparer(secret, proposition))
+    |> Enum.filter(fn {_lettre, verdict} -> verdict != :absent end)
+    |> Enum.map(fn {lettre, _verdict} -> lettre end)
+    |> Enum.frequencies()
+
+  for {lettre, n} <- annoncees, do: assert(n <= Map.get(stock, lettre, 0))
+end
+```
+
+### Si vous bloquez
+
+![SALLE contre PLAGE, lue de gauche à droite : l'inventaire part d'un P, un L, un A et un G ; le A puis le premier L prennent chacun leur exemplaire et deviennent :mal_place, le second L ne trouve plus de L et devient :absent, le E bien placé ne touche pas à l'inventaire](https://ap-2026.noce.fr/diagrams/bonus-b1/parcours.svg)
+
+L'accumulateur de départ est `Restantes.restantes(secret, proposition)`. La
+fonction a deux clauses : `{_lettre, :bien}` laisse l'inventaire intact,
+`{lettre, :autre}` le consulte. Enfin, `Enum.map_reduce/3` rend un tuple dont
+seule la première moitié est le résultat.
+
+Votre `comparer/2` est-elle symétrique ? Évaluez la cellule suivante, puis
+dites en une phrase pourquoi le jeu n'a aucune raison de l'être : la réponse
+servira à l'exercice 6.
+
+```elixir
+{Motus.comparer("POMME", "MOMIE"), Motus.comparer("MOMIE", "POMME")}
+```
+
+## 5. La grille, comme à la télévision
+
+Voici le chemin complet d'une proposition, de ses lettres jusqu'à
+l'affichage :
+
+![Le pipeline de RARES contre PARIS : Mots.lettres donne cinq lettres, Enum.zip les apparie à celles du secret, Enum.map donne :bien ou :autre, Enum.map_reduce parti de l'inventaire tranche les :autre en :absent, puis Enum.map et Enum.join donnent les pastilles vide, rouge, rouge, vide, rouge](https://ap-2026.noce.fr/diagrams/bonus-b1/pipeline.svg)
+
+**Contrat.** `Grille.ligne(secret, proposition)` traduit chaque verdict en
+pastille, 🟥 pour `:bien`, 🟨 pour `:mal_place` et ⬜ pour `:absent`, puis
+les recolle : `Grille.ligne("PARIS", "RARES")` vaut `"⬜🟥🟥⬜🟥"`.
+`Grille.partie(secret, propositions)` rend une ligne par proposition, faite
+des pastilles, de deux espaces et de la proposition en majuscules ; les
+lignes sont jointes par `"\n"`.
+
+> 💡 L'attribut `@pastilles` est une constante du module : `@pastilles[:bien]`
+> vaut `"🟥"`. `Enum.join(["a", "b"])` vaut `"ab"`, et
+> `Enum.join(["a", "b"], "\n")` place un retour à la ligne entre les deux.
+
+```elixir
+defmodule Grille do
+  @pastilles %{bien: "🟥", mal_place: "🟨", absent: "⬜"}
+
+  def ligne(secret, proposition) do
+    # Comparer, traduire chaque verdict, recoller.
+    nil
+  end
+
+  def partie(secret, propositions) do
+    # Une ligne "<pastilles>  <PROPOSITION>" par proposition, jointes par "\n".
+    nil
+  end
+end
+```
+
+```elixir
+assert Grille.ligne("PARIS", "RARES") == "⬜🟥🟥⬜🟥"
+assert Grille.ligne("PLAGE", "SALLE") == "⬜🟨🟨⬜🟥"
+assert Grille.partie("PARIS", ["table", "paris"]) == "⬜🟥⬜⬜⬜  TABLE\n🟥🟥🟥🟥🟥  PARIS"
+# Ajoutez un cas limite : une partie sans aucune proposition.
+IO.puts(Grille.partie("PARIS", ["table", "marin", "paris"]))
+```
+
+## 6. Le solveur : jouer à l'envers
+
+Jusqu'ici, vous étiez le jeu ; écrivons maintenant le joueur. Un mot `m`
+reste possible après la proposition `p` si, en supposant que `m` soit le
+secret, le jeu aurait rendu exactement les verdicts reçus. Toute la logique
+des doublons resert donc, sans une ligne de plus.
+
+![Le secret est PLAGE : des 38 mots du dictionnaire, ROUTE en garde 7, SABLE 2, GLACE et PLAGE, puis GRAIN un seul, PLAGE ; un mot reste candidat s'il aurait donné, pris pour secret, les mêmes verdicts](https://ap-2026.noce.fr/diagrams/bonus-b1/solveur.svg)
+
+**Contrat.** `Solveur.compatibles(mots, proposition, verdicts)` garde, dans
+l'ordre, les mots de `mots` encore possibles : c'est un
+[`Enum.filter/2`](https://hexdocs.pm/elixir/Enum.html#filter/2). Attention à
+l'ordre des arguments de `comparer/2` : c'est ici que sert la question de
+symétrie.
+
+> 💡 `~w(ARBRE AVION)` découpe un texte en la liste de mots
+> `["ARBRE", "AVION"]`.
+
+```elixir
+dictionnaire = ~w(
+  ARBRE AVION BLEUE BOITE BRAVO CARTE CHIEN CIBLE CLOUS CRANE
+  DOUCE ECRAN FLUTE FORET FRUIT GARDE GLACE GRAIN HIVER JOUER
+  LAMPE LIVRE MARIN MONDE NEIGE OCEAN ORAGE PARIS PLAGE PLUIE
+  POMME ROUTE SABLE SALLE TABLE TIGRE VERRE VOILE
+)
+```
+
+```elixir
+defmodule Solveur do
+  def compatibles(mots, proposition, verdicts) do
+    # Chaque mot candidat joue le rôle du secret.
+    nil
+  end
+end
+```
+
+```elixir
+apres_route = Solveur.compatibles(dictionnaire, "ROUTE", Motus.comparer("PLAGE", "ROUTE"))
+assert apres_route == ["CIBLE", "GLACE", "LAMPE", "NEIGE", "PLAGE", "SABLE", "SALLE"]
+apres_sable = Solveur.compatibles(apres_route, "SABLE", Motus.comparer("PLAGE", "SABLE"))
+assert apres_sable == ["GLACE", "PLAGE"]
+assert Solveur.compatibles(apres_sable, "GRAIN", Motus.comparer("PLAGE", "GRAIN")) == ["PLAGE"]
+# Le secret survit toujours à son propre filtre : 38 × 38 parties.
+for secret <- dictionnaire, proposition <- dictionnaire do
+  assert secret in Solveur.compatibles(dictionnaire, proposition, Motus.comparer(secret, proposition))
+end
+```
+
+## Pour aller plus loin
+
+Rien de ce qui suit n'est exigé ni vérifié ; travaillez dans une cellule à
+vous.
+
+* **Le joueur automatique.** Partant du dictionnaire, proposez le premier
+  candidat, filtrez, et recommencez jusqu'au secret. Combien de coups
+  faut-il en moyenne sur les 38 secrets possibles ?
+* **Le meilleur premier coup.** Pour chaque mot, calculez le nombre moyen de
+  candidats qui restent après l'avoir proposé, sur tous les secrets. Quel
+  mot ouvre le mieux, lequel ouvre le plus mal ? Regardez leurs lettres.
+* Un bon coup sépare bien les secrets : la mesure exacte de cette idée est
+  l'*entropie* de la répartition des verdicts, une notion de théorie de
+  l'information, à creuser si le cœur vous en dit.
+
+## Et ensuite
+
+Sauvegardez ce carnet dans `AP2/` ; il n'est ni rendu ni noté.
+
+D'autres niveaux sont cachés sur le site. L'un d'eux s'ouvre par un mot de
+cinq lettres, souvenir de 1993 : si vous avez déjà entendu quelqu'un
+« activer le mode Dieu », vous n'êtes pas loin.
+
+Un bout de syntaxe Elixir vous manque ? Le chapitre 1 du
+[poly](https://ap-2026.noce.fr/poly/poly-elixir.pdf) se consultent au besoin.
+
+Pour toute question, vous pouvez me contacter par email :
+[aurelien.noce@minesparis.psl.eu](mailto:aurelien.noce@minesparis.psl.eu).
